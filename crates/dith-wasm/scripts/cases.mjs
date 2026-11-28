@@ -4,24 +4,6 @@
 const pal = (value) => ({ mode: "builtin", value });
 const rgb = (hex) => ({ r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) });
 
-// Cases where native dith-core calls the platform's powf/sinf/cosf/expf (glibc on Linux) and the
-// .wasm calls Rust's libm, which differ in the last bit for some inputs and can flip a dithered
-// pixel. Value: the most pixels allowed to differ (measured on glibc 2.39 times 1.5, rounded up).
-// With the libm crate interposed natively, all of them match exactly.
-export const LIBM_DIFFS = {
-  "algo-ostromoukhov-pico8": 2600,
-  "prep-adaptive-8": 4100,
-  "prep-gamma": 4000,
-  "prep-grayscale": 66000,
-  "gen-radial-gradient-dithered": 200,
-  "gen-mesh": 10,
-  "gen-mesh-dithered": 29000,
-  "gen-waves": 10,
-  "gen-plasma": 10,
-  "gen-plasma-dithered": 3100,
-  "gen-inflate": 10,
-};
-
 /** Every preset, every algorithm on 2- and 16-color palettes, preprocessing paths and generators. */
 export function parityCases(w) {
   const cases = [];

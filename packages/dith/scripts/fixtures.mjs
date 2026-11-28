@@ -4,9 +4,9 @@
 // output with these hashes, so passing tests mean byte-identical output to the CLI and to each
 // other. Needs the dith binary ($DITH, else target/release/dith) and wasm/ from scripts/wasm.sh.
 //
-// Cases avoid the paths where native and wasm maths still differ in the last bit (powf, sin,
-// cos, exp: gamma, grayscale palettes, adaptive palettes, ostromoukhov, and the mesh, plasma,
-// waves, radial-gradient and inflate generators); see LIBM_DIFFS in crates/dith-wasm/scripts.
+// The cases include the paths that call powf, exp, sin and cos (gamma, saturation, grayscale,
+// blur, resizing, adaptive palettes, ostromoukhov and the curved generators): dith-core computes
+// those with dith_core::detmath, so native and wasm agree to the bit there too.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -62,6 +62,17 @@ const cases = [
   ["gen-rings-pico8", { generate: "rings" }, { algorithm: "bayer4", palette: "pico8", stops: ["#0b1020", "#5b3cc4", "#f7d488"], frequency: 1.5 }, ["--algorithm", "bayer4", "--palette", "pico8", "--stops", "#0b1020,#5b3cc4,#f7d488", "--frequency", "1.5"]],
   ["gen-linear-gradient", { generate: "linear-gradient" }, { preset: "film-stipple", width: 300, height: 120, angle: 30 }, ["--preset", "film-stipple", "--width", "300", "--height", "120", "--angle", "30"]],
   ["gen-noise-gameboy", { generate: "noise" }, { preset: "gameboy", seed: 9 }, ["--preset", "gameboy", "--seed", "9"]],
+  ["png-gamma", "png", { algorithm: "floyd-steinberg", palette: "pico8", gamma: 0.6 }, ["--algorithm", "floyd-steinberg", "--palette", "pico8", "--gamma", "0.6"]],
+  ["png-saturation", "png", { algorithm: "atkinson", palette: "pico8", saturation: 1.6 }, ["--algorithm", "atkinson", "--palette", "pico8", "--saturation", "1.6"]],
+  ["png-grayscale-invert", "png", { grayscale: true, invert: true, palette: "gray8" }, ["--grayscale", "--invert", "--palette", "gray8"]],
+  ["png-blur", "png", { palette: "gameboy", blur: 1.8 }, ["--palette", "gameboy", "--blur", "1.8"]],
+  ["png-resize", "png", { algorithm: "floyd-steinberg", palette: "pico8", width: 333 }, ["--algorithm", "floyd-steinberg", "--palette", "pico8", "--width", "333"]],
+  ["png-auto-palette", "png", { autoPalette: 8 }, ["--auto-palette", "8"]],
+  ["png-ostromoukhov", "png", { algorithm: "ostromoukhov", palette: "pico8" }, ["--algorithm", "ostromoukhov", "--palette", "pico8"]],
+  ["gen-radial-gradient", { generate: "radial-gradient" }, { algorithm: "floyd-steinberg", palette: "pico8", canvasWidth: 320, canvasHeight: 240 }, ["--algorithm", "floyd-steinberg", "--palette", "pico8", "--canvas-width", "320", "--canvas-height", "240"]],
+  ["gen-mesh", { generate: "mesh" }, { algorithm: "floyd-steinberg", palette: "pico8", canvasWidth: 320, canvasHeight: 240 }, ["--algorithm", "floyd-steinberg", "--palette", "pico8", "--canvas-width", "320", "--canvas-height", "240"]],
+  ["gen-plasma", { generate: "plasma" }, { algorithm: "floyd-steinberg", palette: "pico8", canvasWidth: 320, canvasHeight: 240 }, ["--algorithm", "floyd-steinberg", "--palette", "pico8", "--canvas-width", "320", "--canvas-height", "240"]],
+  ["gen-waves", { generate: "waves" }, { preset: "risograph", canvasWidth: 320, canvasHeight: 240, angle: 30, frequency: 2.5 }, ["--preset", "risograph", "--canvas-width", "320", "--canvas-height", "240", "--angle", "30", "--frequency", "2.5"]],
   ["gen-checkerboard-svg", { generate: "checkerboard" }, { palette: "cga", algorithm: "threshold", canvasWidth: 64, canvasHeight: 48 }, ["--palette", "cga", "--algorithm", "threshold", "--canvas-width", "64", "--canvas-height", "48"], "svg"],
 ];
 

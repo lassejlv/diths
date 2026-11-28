@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::color::{Oklab, Rgb};
+use crate::detmath;
 use crate::inflate::{InflateParams, InflateShape, inflate_tones};
 use crate::palette::SplitMix64;
 
@@ -282,8 +283,8 @@ where
 
 fn render_linear(w: u32, h: u32, angle_deg: f32, stops: &[Oklab]) -> RgbaImage {
     let rad = angle_deg.to_radians();
-    let dx = rad.cos();
-    let dy = rad.sin();
+    let dx = detmath::cos(rad);
+    let dy = detmath::sin(rad);
     let span = dx.abs() + dy.abs();
     let inv_span = if span > 1e-5 { 1.0 / span } else { 1.0 };
 
@@ -309,28 +310,25 @@ fn render_radial(
     let pulse = if phase == 0.0 {
         1.0
     } else {
-        1.0 + 0.16 * amp * theta.sin()
+        1.0 + 0.16 * amp * detmath::sin(theta)
     };
     let scale = (frequency * pulse).clamp(0.2, 5.0);
     let orbit_x = if phase == 0.0 {
         0.0
     } else {
-        (w as f32) * 0.08 * amp * theta.cos()
+        (w as f32) * 0.08 * amp * detmath::cos(theta)
     };
     let orbit_y = if phase == 0.0 {
         0.0
     } else {
-        (h as f32) * 0.08 * amp * theta.sin()
+        (h as f32) * 0.08 * amp * detmath::sin(theta)
     };
     let cx = (w as f32 - 1.0) * 0.5 + orbit_x;
     let cy = (h as f32 - 1.0) * 0.5 + orbit_y;
-    let radius = ((w as f32 - 1.0) * 0.5)
-        .hypot((h as f32 - 1.0) * 0.5)
-        .max(1.0)
-        / scale;
+    let radius = detmath::hypot((w as f32 - 1.0) * 0.5, (h as f32 - 1.0) * 0.5).max(1.0) / scale;
 
     render_parallel(w, h, |x, y| {
-        let dist = (x as f32 - cx).hypot(y as f32 - cy) / radius;
+        let dist = detmath::hypot(x as f32 - cx, y as f32 - cy) / radius;
         // Invert so bright highlight sits at center when stops go dark->light.
         let t = (1.0 - dist).clamp(0.0, 1.0);
         let smooth = t * t * (3.0 - 2.0 * t);
@@ -352,11 +350,11 @@ fn render_mesh(w: u32, h: u32, seed: u64, phase: f32, amp: f32, stops: &[Oklab])
         let (ax, ay) = if phase == 0.0 {
             (base_x, base_y)
         } else {
-            let ox = (base_x + orbit_r * (dir * theta + orbit_phi).cos()
-                - orbit_r * orbit_phi.cos())
+            let ox = (base_x + orbit_r * detmath::cos(dir * theta + orbit_phi)
+                - orbit_r * detmath::cos(orbit_phi))
             .clamp(0.02, 0.98);
-            let oy = (base_y + orbit_r * (dir * theta + orbit_phi).sin()
-                - orbit_r * orbit_phi.sin())
+            let oy = (base_y + orbit_r * detmath::sin(dir * theta + orbit_phi)
+                - orbit_r * detmath::sin(orbit_phi))
             .clamp(0.02, 0.98);
             (ox, oy)
         };
@@ -406,10 +404,10 @@ fn render_sphere(
     let tilt = if phase == 0.0 {
         0.65
     } else {
-        (0.65 + 0.14 * amp * (phase * TAU).sin()).clamp(0.15, 0.92)
+        (0.65 + 0.14 * amp * detmath::sin(phase * TAU)).clamp(0.15, 0.92)
     };
-    let lx = rad.cos() * tilt;
-    let ly = -rad.sin() * tilt;
+    let lx = detmath::cos(rad) * tilt;
+    let ly = -detmath::sin(rad) * tilt;
     let lz = (1.0 - lx * lx - ly * ly).max(0.1).sqrt();
     let hz = lz + 1.0;
     let inv_hlen = 1.0 / (lx * lx + ly * ly + hz * hz).sqrt();
@@ -423,16 +421,14 @@ fn render_sphere(
             let nz = (1.0 - d2).sqrt();
             let diffuse = (dx * lx + dy * ly + nz * lz).max(0.0);
             // Blinn-Phong soft specular highlight.
-            let spec = ((dx * lx + dy * ly + nz * hz) * inv_hlen)
-                .max(0.0)
-                .powf(28.0);
+            let spec = detmath::powi(((dx * lx + dy * ly + nz * hz) * inv_hlen).max(0.0), 28);
             // Gentle Fresnel rim light so dark edge separates cleanly from backdrop.
-            let rim = (1.0 - nz).powf(2.6) * 0.28;
+            let rim = detmath::powf(1.0 - nz, 2.6) * 0.28;
             highlight_shoulder(0.08 + diffuse * 0.78 + spec * 0.42 + rim)
         } else {
             // Subtle studio backdrop gradient + soft floor glow.
             let bg_y = y as f32 * inv_hm1;
-            let halo = (-((d2.sqrt() - 1.0) * 2.2).powi(2)).exp() * 0.14;
+            let halo = detmath::exp(-((d2.sqrt() - 1.0) * 2.2).powi(2)) * 0.14;
             (0.16 * (1.0 - bg_y) + 0.04 + halo).clamp(0.0, 1.0)
         };
 
@@ -448,7 +444,7 @@ pub(crate) fn highlight_shoulder(v: f32) -> f32 {
         return v.max(0.0);
     }
     let headroom = 1.0 - KNEE;
-    (KNEE + headroom * (1.0 - (-(v - KNEE) / headroom).exp())).min(1.0)
+    (KNEE + headroom * (1.0 - detmath::exp(-(v - KNEE) / headroom))).min(1.0)
 }
 
 fn render_waves(
@@ -461,8 +457,8 @@ fn render_waves(
     stops: &[Oklab],
 ) -> RgbaImage {
     let rad = angle_deg.to_radians();
-    let ca = rad.cos();
-    let sa = rad.sin();
+    let ca = detmath::cos(rad);
+    let sa = detmath::sin(rad);
     let freq = frequency.clamp(0.2, 10.0);
     let theta = phase * TAU;
 
@@ -473,10 +469,12 @@ fn render_waves(
         let v = y as f32 / hf - 0.5;
         let ru = u * ca - v * sa;
         let rv = u * sa + v * ca;
-        let wave1 =
-            ((ru * 3.0 * freq + (rv * 2.5 * freq + theta).sin() * 0.45 * amp) * TAU - theta).sin();
-        let wave2 =
-            ((rv * 1.8 * freq - (ru * 2.0 * freq - theta).cos() * 0.35 * amp) * TAU + theta).cos();
+        let wave1 = detmath::sin(
+            (ru * 3.0 * freq + detmath::sin(rv * 2.5 * freq + theta) * 0.45 * amp) * TAU - theta,
+        );
+        let wave2 = detmath::cos(
+            (rv * 1.8 * freq - detmath::cos(ru * 2.0 * freq - theta) * 0.35 * amp) * TAU + theta,
+        );
         let t = (0.5 + 0.35 * wave1 + 0.15 * wave2).clamp(0.0, 1.0);
         sample_stops(stops, t)
     })
@@ -498,12 +496,12 @@ fn render_noise(
     let dx0 = if phase == 0.0 {
         0.0
     } else {
-        loop_r * (theta.cos() - 1.0)
+        loop_r * (detmath::cos(theta) - 1.0)
     };
     let dy0 = if phase == 0.0 {
         0.0
     } else {
-        loop_r * theta.sin()
+        loop_r * detmath::sin(theta)
     };
 
     render_parallel(w, h, |x, y| {
@@ -544,9 +542,9 @@ fn render_rings(
     let wave_step = amp.round().max(1.0);
 
     render_parallel(w, h, |x, y| {
-        let dist = (x as f32 - cx).hypot(y as f32 - cy) / norm;
-        let ripple = 0.5 + 0.5 * ((dist * freq - phase * wave_step) * TAU).cos();
-        let fade = (-dist * 0.45).exp();
+        let dist = detmath::hypot(x as f32 - cx, y as f32 - cy) / norm;
+        let ripple = 0.5 + 0.5 * detmath::cos((dist * freq - phase * wave_step) * TAU);
+        let fade = detmath::exp(-dist * 0.45);
         let t = (ripple * (0.45 + 0.55 * fade)).clamp(0.0, 1.0);
         sample_stops(stops, t)
     })
@@ -568,10 +566,11 @@ fn render_plasma(
     render_parallel(w, h, |x, y| {
         let u = (x as f32 / wf) * TAU * freq;
         let v = (y as f32 / hf) * TAU * freq;
-        let p1 = (u + theta).sin();
-        let p2 = (v * 1.15 - theta).cos();
-        let p3 = ((u + v) * 0.7 + theta).sin();
-        let p4 = ((u - 0.5 * TAU * freq).hypot(v - 0.5 * TAU * freq) * 1.2 - theta).sin();
+        let p1 = detmath::sin(u + theta);
+        let p2 = detmath::cos(v * 1.15 - theta);
+        let p3 = detmath::sin((u + v) * 0.7 + theta);
+        let p4 =
+            detmath::sin(detmath::hypot(u - 0.5 * TAU * freq, v - 0.5 * TAU * freq) * 1.2 - theta);
         let t = ((p1 + p2 + p3 + p4) * 0.125 + 0.5).clamp(0.0, 1.0);
         sample_stops(stops, t)
     })
@@ -592,24 +591,22 @@ fn render_checkerboard(
         + if phase == 0.0 {
             0.0
         } else {
-            (w as f32) * 0.12 * amp * theta.cos()
+            (w as f32) * 0.12 * amp * detmath::cos(theta)
         };
     let cy = (h as f32 - 1.0) * 0.5
         + if phase == 0.0 {
             0.0
         } else {
-            (h as f32) * 0.12 * amp * theta.sin()
+            (h as f32) * 0.12 * amp * detmath::sin(theta)
         };
-    let max_r = ((w as f32 - 1.0) * 0.5)
-        .hypot((h as f32 - 1.0) * 0.5)
-        .max(1.0);
+    let max_r = detmath::hypot((w as f32 - 1.0) * 0.5, (h as f32 - 1.0) * 0.5).max(1.0);
     let scroll = phase * 2.0 * amp.round().max(1.0);
 
     render_parallel(w, h, |x, y| {
         let gx = ((x as f32 / min_side) * cells + scroll).floor() as i32;
         let gy = ((y as f32 / min_side) * cells + scroll).floor() as i32;
         let is_light = (gx + gy).rem_euclid(2) == 0;
-        let vig = 1.0 - 0.38 * ((x as f32 - cx).hypot(y as f32 - cy) / max_r);
+        let vig = 1.0 - 0.38 * (detmath::hypot(x as f32 - cx, y as f32 - cy) / max_r);
         let base = if is_light { 0.92 } else { 0.14 };
         let t = (base * vig).clamp(0.0, 1.0);
         sample_stops(stops, t)

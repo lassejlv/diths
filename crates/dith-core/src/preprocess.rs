@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::color::{Rgb, linear_to_srgb_u8, srgb_u8_to_linear};
+use crate::detmath;
 use crate::resample::{resize_lanczos3, resize_nearest};
 
 /// How to fit an image when both `--width` and `--height` are specified.
@@ -198,7 +199,7 @@ pub(crate) fn prepare(src: Cow<'_, RgbaImage>, opts: &PreprocessOptions) -> Prep
     }
 
     if opts.blur > 0.01 {
-        img = imageops::blur(&img, opts.blur.clamp(0.1, 20.0));
+        img = gaussian_blur(&img, opts.blur.clamp(0.1, 20.0));
     }
 
     if opts.sharpen > 0.01 {
@@ -267,6 +268,84 @@ fn resize_cover(src: &RgbaImage, target_w: u32, target_h: u32) -> RgbaImage {
     let x = (scaled_w - target_w) / 2;
     let y = (scaled_h - target_h) / 2;
     imageops::crop_imm(&scaled, x, y, target_w, target_h).to_image()
+}
+
+/// Separable Gaussian blur with clamped edges: the kernel size, tap order and rounding of
+/// `image::imageops::blur`, but with its kernel from [`detmath::exp`] and a separate multiply and
+/// add, where `image` uses the platform's `expf` and fuses the multiply-add on some targets only.
+fn gaussian_blur(img: &RgbaImage, sigma: f32) -> RgbaImage {
+    let kernel = gaussian_kernel(sigma);
+    let len = kernel.len();
+    let half = len / 2;
+    let (w, h) = (img.width() as usize, img.height() as usize);
+    if w == 0 || h == 0 {
+        return img.clone();
+    }
+    let stride = w * 4;
+
+    let mut rows = vec![0.0f32; stride * h];
+    rows.par_chunks_exact_mut(stride)
+        .zip(img.as_raw().par_chunks_exact(stride))
+        .for_each_init(
+            || vec![0.0f32; stride + 8 * half],
+            |padded, (dst, src)| {
+                for (x, px) in padded.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                    let from = &src[x.saturating_sub(half).min(w - 1) * 4..][..4];
+                    *px = [from[0], from[1], from[2], from[3]].map(f32::from);
+                }
+                for (out, &v) in dst.iter_mut().zip(&padded[half * 4..]) {
+                    *out = v * kernel[half];
+                }
+                for (i, &k) in kernel[..half].iter().enumerate() {
+                    let fw = &padded[i * 4..];
+                    let bw = &padded[(len - 1 - i) * 4..];
+                    for ((out, &a), &b) in dst.iter_mut().zip(fw).zip(bw) {
+                        *out += (a + b) * k;
+                    }
+                }
+            },
+        );
+
+    let row = |y: usize| &rows[y.saturating_sub(half).min(h - 1) * stride..][..stride];
+    let mut out = vec![0u8; stride * h];
+    out.par_chunks_exact_mut(stride).enumerate().for_each_init(
+        || vec![0.0f32; stride],
+        |acc, (y, dst)| {
+            for (a, &v) in acc.iter_mut().zip(row(y + half)) {
+                *a = v * kernel[half];
+            }
+            for (i, &k) in kernel[..half].iter().enumerate() {
+                for ((a, &f), &b) in acc.iter_mut().zip(row(y + i)).zip(row(y + len - 1 - i)) {
+                    *a += (f + b) * k;
+                }
+            }
+            for (px, &v) in dst.iter_mut().zip(acc.iter()) {
+                *px = v.round().clamp(0.0, 255.0) as u8;
+            }
+        },
+    );
+    RgbaImage::from_raw(img.width(), img.height(), out).unwrap_or_else(|| img.clone())
+}
+
+/// Normalized Gaussian kernel, sized and scaled as `image` 0.25 sizes and scales its own.
+fn gaussian_kernel(sigma: f32) -> Vec<f32> {
+    let size = (((((sigma - 0.8) / 0.3) + 1.0) * 2.0) + 1.0).max(3.0) as usize | 1;
+    let scale = 1.0 / ((2.0 * std::f32::consts::PI).sqrt() * sigma);
+    let mean = (size / 2) as f32;
+    let mut kernel: Vec<f32> = (0..size)
+        .map(|x| {
+            let d = (x as f32 - mean) / sigma;
+            detmath::exp(-0.5 * (d * d)) * scale
+        })
+        .collect();
+    let sum: f32 = kernel.iter().sum();
+    if sum != 0.0 {
+        let inv = 1.0 / sum;
+        for k in &mut kernel {
+            *k *= inv;
+        }
+    }
+    kernel
 }
 
 fn flatten_alpha(img: &mut RgbaImage, bg: Rgb) {
@@ -449,7 +528,7 @@ fn apply_tonal_adjustments(img: &mut RgbaImage, opts: &PreprocessOptions) {
         let v = ((v - 0.5) * contrast_factor + 0.5 + brightness).clamp(0.0, 1.0);
         // Gamma.
         if (gamma - 1.0).abs() > 1e-4 {
-            v.powf(gamma)
+            detmath::powf(v, gamma)
         } else {
             v
         }
@@ -466,6 +545,7 @@ fn apply_tonal_adjustments(img: &mut RgbaImage, opts: &PreprocessOptions) {
 
     // Saturation / grayscale in linear light.
     let linear = curve.map(crate::color::srgb_f32_to_linear);
+    let encode = SteppedByteMap::new(|v| finish(crate::color::linear_to_srgb_f32(v)));
     img.as_mut().par_chunks_mut(4 * 4096).for_each(|chunk| {
         for px in chunk.as_chunks_mut::<4>().0 {
             let lr = linear[usize::from(px[0])];
@@ -474,17 +554,91 @@ fn apply_tonal_adjustments(img: &mut RgbaImage, opts: &PreprocessOptions) {
             let y = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
             if sat == 0.0 {
                 // `y + (l - y) * 0.0` is exactly `y` for every channel: one conversion serves all three.
-                let v = finish(crate::color::linear_to_srgb_f32(y));
+                let v = encode.get(y);
                 px[0] = v;
                 px[1] = v;
                 px[2] = v;
             } else {
-                px[0] = finish(crate::color::linear_to_srgb_f32(y + (lr - y) * sat));
-                px[1] = finish(crate::color::linear_to_srgb_f32(y + (lg - y) * sat));
-                px[2] = finish(crate::color::linear_to_srgb_f32(y + (lb - y) * sat));
+                px[0] = encode.get(y + (lr - y) * sat);
+                px[1] = encode.get(y + (lg - y) * sat);
+                px[2] = encode.get(y + (lb - y) * sat);
             }
         }
     });
+}
+
+/// A map from `f32` to `u8` that is monotonic on `[0, 1]`, constant below `2^-14` and above `1`,
+/// and moves by at most one level inside each bucket of its table, which `new` checks. A bucket
+/// spans `2^16` consecutive `f32` bit patterns (1/128 of an octave) and holds its first value and
+/// the first input where the value steps, so a lookup is one load and one comparison and returns
+/// exactly what the map returns.
+struct SteppedByteMap {
+    buckets: Vec<(f32, u8)>,
+    rising: bool,
+}
+
+impl SteppedByteMap {
+    const SHIFT: u32 = 16;
+    /// Below this input the map must equal its value at zero.
+    const LOWEST: f32 = 1.0 / 16_384.0;
+
+    fn new(map: impl Fn(f32) -> u8) -> Self {
+        let first = Self::LOWEST.to_bits() >> Self::SHIFT;
+        let one = 1.0f32.to_bits();
+        let rising = map(1.0) >= map(0.0);
+        assert_eq!(
+            map(Self::LOWEST),
+            map(0.0),
+            "map must be flat below {}",
+            Self::LOWEST
+        );
+        let buckets = (first..=one >> Self::SHIFT)
+            .map(|bucket| {
+                let start = bucket << Self::SHIFT;
+                let end = (start | ((1 << Self::SHIFT) - 1)).min(one);
+                let value = map(f32::from_bits(start));
+                let last = map(f32::from_bits(end));
+                if last == value {
+                    return (f32::INFINITY, value);
+                }
+                assert_eq!(
+                    last.abs_diff(value),
+                    1,
+                    "more than one step in bucket {bucket:#x}"
+                );
+                assert_eq!(
+                    last > value,
+                    rising,
+                    "map is not monotonic in bucket {bucket:#x}"
+                );
+                let (mut lo, mut hi) = (start, end);
+                while lo < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    if map(f32::from_bits(mid)) == value {
+                        lo = mid + 1;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                (f32::from_bits(lo), value)
+            })
+            .collect();
+        Self { buckets, rising }
+    }
+
+    #[inline]
+    fn get(&self, v: f32) -> u8 {
+        let v = v.clamp(f32::MIN_POSITIVE, 1.0);
+        let index =
+            (v.to_bits() >> Self::SHIFT).saturating_sub(Self::LOWEST.to_bits() >> Self::SHIFT);
+        let (step, value) = self.buckets[index as usize];
+        let stepped = u8::from(v >= step);
+        if self.rising {
+            value + stepped
+        } else {
+            value - stepped
+        }
+    }
 }
 
 #[cfg(test)]
@@ -492,6 +646,45 @@ mod tests {
     use image::Rgba;
 
     use super::*;
+
+    #[test]
+    fn stepped_byte_map_matches_the_srgb_encoding_it_replaces() {
+        for invert in [false, true] {
+            let direct = |v: f32| {
+                let s = crate::color::linear_to_srgb_f32(v);
+                let s = if invert { 1.0 - s } else { s };
+                (s.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
+            };
+            let map = SteppedByteMap::new(direct);
+            let one = 1.0f32.to_bits();
+            let mut probes: Vec<f32> = (0..=1_000_000u32)
+                .map(|i| f32::from_bits((u64::from(one) * u64::from(i) / 1_000_000) as u32))
+                .collect();
+            for &(step, _) in map.buckets.iter().filter(|(s, _)| s.is_finite()) {
+                probes.extend((0..5).map(|d| f32::from_bits(step.to_bits() + d - 2)));
+            }
+            probes.extend([-1.0, -0.0, 1.5, 3.0, f32::MIN_POSITIVE, 1e-30]);
+            for v in probes {
+                assert_eq!(map.get(v), direct(v), "invert {invert}, v {v:e}");
+            }
+        }
+    }
+
+    #[test]
+    fn gaussian_blur_tracks_image_crate_blur() {
+        let mut img = RgbaImage::new(37, 23);
+        for (x, y, px) in img.enumerate_pixels_mut() {
+            let v = (x * 7 + y * 13) as u8;
+            *px = Rgba([v, v.wrapping_mul(3), 255 - v, 200 + (x % 50) as u8]);
+        }
+        for sigma in [0.1, 0.8, 1.5, 2.37, 5.0, 12.0, 20.0] {
+            let ours = gaussian_blur(&img, sigma);
+            let theirs = imageops::blur(&img, sigma);
+            for (a, b) in ours.as_raw().iter().zip(theirs.as_raw()) {
+                assert!(a.abs_diff(*b) <= 1, "sigma {sigma}: {a} vs {b}");
+            }
+        }
+    }
 
     #[test]
     fn plan_dimensions_respects_aspect_and_max_dim() {

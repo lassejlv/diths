@@ -1,16 +1,19 @@
-//! Faster, exact equivalents of `image::imageops::resize` for the two filters dith resizes with.
+//! Faster equivalents of `image::imageops::resize` for the two filters dith resizes with.
 //!
 //! `image` resamples in two passes through a full-size `f32` intermediate image, and its
 //! horizontal pass walks the intermediate column by column. Here every output row is produced on
 //! its own (in parallel): its vertical taps are summed into one row of `f32` column sums, then
 //! its horizontal taps are summed from that row. Window bounds, weights and the order of every
-//! `f32` addition are the ones `image` 0.25 uses, so the bytes are identical; the tests compare
-//! the two directly.
+//! `f32` addition are the ones `image` 0.25 uses. The one difference is the Lanczos sine, which
+//! comes from [`crate::detmath`] instead of the platform's libm so every platform gets the same
+//! bytes; nearest-neighbour output is byte for byte `image`'s. The tests compare the two directly.
 
 use std::f32::consts::PI;
 
 use image::RgbaImage;
 use rayon::prelude::*;
+
+use crate::detmath;
 
 /// The window of one output coordinate: the first source index and the normalized weights.
 type Taps = (usize, Vec<f32>);
@@ -19,7 +22,7 @@ type Taps = (usize, Vec<f32>);
 fn lanczos3(x: f32) -> f32 {
     fn sinc(t: f32) -> f32 {
         let a = t * PI;
-        if t == 0.0 { 1.0 } else { a.sin() / a }
+        if t == 0.0 { 1.0 } else { detmath::sin(a) / a }
     }
     if x.abs() < 3.0 {
         sinc(x) * sinc(x / 3.0)
@@ -54,7 +57,7 @@ fn lanczos3_taps(src_len: u32, dst_len: u32) -> Vec<Taps> {
         .collect()
 }
 
-/// `imageops::resize(src, width, height, FilterType::Lanczos3)`, byte for byte.
+/// `imageops::resize(src, width, height, FilterType::Lanczos3)` with a deterministic sine.
 #[must_use]
 pub fn resize_lanczos3(src: &RgbaImage, width: u32, height: u32) -> RgbaImage {
     if src.width() == 0 || src.height() == 0 || (width, height) == src.dimensions() {
@@ -151,8 +154,23 @@ mod tests {
         })
     }
 
+    /// `image` computes its Lanczos weights with the platform's `sinf` and this module with
+    /// [`detmath::sin`], so a weight can differ in its last bit and move a rounded byte by one.
+    fn assert_lanczos_matches(ours: &RgbaImage, theirs: &RgbaImage, what: &str) {
+        assert_eq!(ours.dimensions(), theirs.dimensions(), "{what}");
+        let mut changed = 0;
+        for (a, b) in ours.as_raw().iter().zip(theirs.as_raw()) {
+            assert!(a.abs_diff(*b) <= 1, "{what}: {a} vs {b}");
+            changed += usize::from(a != b);
+        }
+        assert!(
+            changed * 1000 <= ours.as_raw().len(),
+            "{what}: {changed} bytes differ"
+        );
+    }
+
     #[test]
-    fn resizes_match_image_crate_byte_for_byte() {
+    fn resizes_match_image_crate() {
         let sizes = [
             (1, 1),
             (1, 7),
@@ -168,10 +186,10 @@ mod tests {
             let src = noise(sw, sh, seed);
             for &(dw, dh) in &sizes {
                 for (dw, dh) in [(dw, dh), (dw * 3, dh), (dw, dh * 2 + 1)] {
-                    assert_eq!(
-                        resize_lanczos3(&src, dw, dh).as_raw(),
-                        resize(&src, dw, dh, FilterType::Lanczos3).as_raw(),
-                        "lanczos3 {sw}x{sh} -> {dw}x{dh}"
+                    assert_lanczos_matches(
+                        &resize_lanczos3(&src, dw, dh),
+                        &resize(&src, dw, dh, FilterType::Lanczos3),
+                        &format!("lanczos3 {sw}x{sh} -> {dw}x{dh}"),
                     );
                     assert_eq!(
                         resize_nearest(&src, dw, dh).as_raw(),
@@ -194,10 +212,10 @@ mod tests {
             (3000, 1994),
             (17, 1000),
         ] {
-            assert_eq!(
-                resize_lanczos3(&src, dw, dh).as_raw(),
-                resize(&src, dw, dh, FilterType::Lanczos3).as_raw(),
-                "lanczos3 -> {dw}x{dh}"
+            assert_lanczos_matches(
+                &resize_lanczos3(&src, dw, dh),
+                &resize(&src, dw, dh, FilterType::Lanczos3),
+                &format!("lanczos3 -> {dw}x{dh}"),
             );
             assert_eq!(
                 resize_nearest(&src, dw, dh).as_raw(),

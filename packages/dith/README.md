@@ -193,4 +193,4 @@ bun run fixtures   # CLI reference outputs for the tests (needs target/release/d
 bun run test && bun run test:bun && bun run test:browser && bun run test:deno && bun run test:workers && bun run test:cdn
 ```
 
-The tests compare every runtime's output with SHA-256 hashes of what the native CLI writes for the same cases, so a pass means byte-identical output across runtimes and with the CLI. The cases avoid the 11 known paths where native and WebAssembly maths still differ in the last bit (see `LIBM_DIFFS` in `crates/dith-wasm/scripts/cases.mjs`).
+The tests compare every runtime's output with SHA-256 hashes of what the native CLI writes for the same cases, so a pass means byte-identical output across runtimes and with the CLI. They include the paths that use `powf`, `exp`, `sin` and `cos` (gamma, saturation, grayscale, blur, resizing, adaptive palettes, Ostromoukhov and the curved generators), which dith-core computes with its own deterministic `dith_core::detmath`, so native and WebAssembly agree there to the bit.

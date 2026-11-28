@@ -5,15 +5,14 @@
 //
 // <pkg-dir> holds the nodejs build (dith_wasm.js). The native side is examples/native.rs, built
 // with the same features. Every case must produce identical RGBA, and identical bytes from every
-// encoder the build includes, except the LIBM_DIFFS cases in cases.mjs, which may differ by at
-// most their pixel budget. Exits 1 on any other difference and names the cases.
+// encoder the build includes. Exits 1 on any difference and names the cases.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { LIBM_DIFFS, parityCases } from "./cases.mjs";
+import { parityCases } from "./cases.mjs";
 
 const [pkgDir, features = ""] = process.argv.slice(2);
 if (!pkgDir) {
@@ -63,9 +62,7 @@ for (const c of cases) {
       if (differs) pixels++;
     }
     const line = `${c.id}: ${pixels} of ${expected.length / 4} pixels differ (max channel delta ${maxDelta}), native ${meta.width}x${meta.height}, wasm ${out.width}x${out.height}`;
-    const sameSize = meta.width === out.width && meta.height === out.height;
-    if (sameSize && pixels <= (LIBM_DIFFS[c.id] ?? -1)) known.push(`${line}, budget ${LIBM_DIFFS[c.id]}`);
-    else failures.push(line);
+    failures.push(line);
     continue;
   }
   for (const format of formats) {

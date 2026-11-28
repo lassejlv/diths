@@ -7,6 +7,8 @@ use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::detmath;
+
 /// Error returned when parsing a hex color string fails.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("invalid hex color '{input}': expected #RGB, #RRGGBB, or #RRGGBBAA")]
@@ -340,7 +342,7 @@ pub fn srgb_f32_to_linear(c: f32) -> f32 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        detmath::powf((c + 0.055) / 1.055, 2.4)
     }
 }
 
@@ -358,7 +360,7 @@ pub fn linear_to_srgb_f32(c: f32) -> f32 {
     if c <= 0.003_130_8 {
         12.92 * c
     } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
+        1.055 * detmath::powf(c, 1.0 / 2.4) - 0.055
     }
 }
 

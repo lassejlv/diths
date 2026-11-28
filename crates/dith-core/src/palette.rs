@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::color::{ColorSpace, LinearRgb, Oklab, ParseColorError, Rgb};
+use crate::detmath;
 use crate::nearest::{Matcher, NearestGrid};
 
 /// Error returned when resolving, parsing, or loading a color palette fails.
@@ -440,7 +441,7 @@ pub(crate) fn extract_adaptive_palette_from_images(
 
     // k-means++ initialization in Oklab.
     let mut centroids: Vec<Oklab> = Vec::with_capacity(k);
-    let first = (rng.next_u64() as usize) % samples.len();
+    let first = (rng.next_u64() % samples.len() as u64) as usize;
     let mut last_centroid = samples[first];
     centroids.push(last_centroid);
 
@@ -614,11 +615,11 @@ fn estimate_channel_spread(entries: &[[f32; 3]]) -> [f32; 3] {
             .filter(|&g| g > 0.015)
             .collect();
         if gaps.is_empty() {
-            out[ch] = range / (n.cbrt().max(1.0));
+            out[ch] = range / ((detmath::cbrt(f64::from(n)) as f32).max(1.0));
         } else {
             gaps.sort_by(f32::total_cmp);
             let median_gap = gaps[gaps.len() / 2];
-            let cube_step = range / (n.cbrt().max(1.0));
+            let cube_step = range / ((detmath::cbrt(f64::from(n)) as f32).max(1.0));
             out[ch] = median_gap.max(cube_step * 0.65).min(range);
         }
     }
