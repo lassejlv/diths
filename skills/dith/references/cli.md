@@ -18,6 +18,7 @@ Every subcommand accepts `--json`. `dith <command> --help` is always authoritati
 - [Ink overlays](#ink-overlays) (apply, generate, animate)
 - [JSON reports](#json-reports)
 - [Errors and exit codes](#errors-and-exit-codes)
+- [Use from JavaScript](#use-from-javascript)
 
 ## Install, update, or run from source
 
@@ -417,3 +418,17 @@ With `--json`, errors are printed to stderr:
 | 1 | Runtime or I/O failure | `RUNTIME_ERROR` (missing or undecodable input, write failure, batch item failures) |
 
 Without `--json`, errors print as `error [CODE]: message` followed by `hint: suggestion`.
+
+## Use from JavaScript
+
+The `dith` package in `packages/dith` runs the same engine as WebAssembly in browsers, Node ≥ 20.16, Bun, Deno and Cloudflare Workers. Each shared dither flag is an option in camelCase (`--pixel-size 3` is `pixelSize: 3`, `--no-serpentine` is `serpentine: false`), `dith generate` flags are `generate()` options (`--canvas-width` is `canvasWidth`), and layering is the CLI's: `recipe`, then `preset`, then the other options.
+
+| CLI | JavaScript |
+| --- | --- |
+| `dith apply in.jpg -o out.png --preset manga --max-dim 960` | `(await dither("in.jpg", { preset: "manga", maxDim: 960 })).toPNG()` |
+| `dith generate sphere -o orb.svg --preset risograph --canvas-width 320` | `(await generate("sphere", { preset: "risograph", canvasWidth: 320 })).toSVG()` |
+| `--recipe look.json` / `--emit-recipe` | `{ recipe: look }` / `result.recipe` or `await recipe(options)` |
+| `dith list presets --json` | `await presets()` (also `palettes()`, `algorithms()`, `generators()`) |
+| `--json` error envelope | `DithError`: `code`, `message`, `suggestion`, `validValues`; `err.toJSON()` is the envelope |
+
+PNG, GIF and SVG bytes match the CLI's for the same input and flags. The package has no `animate`, `batch`, `compare`, `preview`, `diff`, `--palette-file`, `--overlay`, `--shape` or `--paint`. See [packages/dith/README.md](../../../packages/dith/README.md) for inputs, loading and the full option table.

@@ -137,6 +137,20 @@ With `--json`, errors go to stderr as `{"status":"error","code","message","sugge
 - **Exit 2**: invalid input from you. Codes include `CLI_USAGE_ERROR`, `INVALID_ARGUMENT` (an out-of-range value; the message includes the range), `UNKNOWN_PRESET` and similar codes (`valid_values` lists the options), and `OUTPUT_EXISTS` (`--no-clobber` hit an existing file), and `INVALID_ASSET` (an `--overlay`, `--shape` or `--paint` file is missing or not an image). Fix the flags and retry.
 - **Exit 1**: runtime or I/O failure (`RUNTIME_ERROR`), such as a missing input or an undecodable file. `batch` also exits 1 when any item fails.
 
+## Use from JavaScript
+
+When the work runs in a browser, Node, Bun, Deno or a Cloudflare Worker instead of a shell, use the `dith` package in the repository's `packages/dith` (WebAssembly, zero dependencies, not on npm yet). Options are the CLI flags in camelCase, and output is byte-identical to the CLI's:
+
+```js
+import { dither, generate } from "dith";
+const out = await dither("photo.jpg", { preset: "risograph", maxDim: 960 }); // path, URL, bytes, Blob, ImageData, <img>, canvas
+out.toPNG();      // the bytes of: dith apply photo.jpg --preset risograph --max-dim 960
+out.recipe;       // the --emit-recipe JSON, for --recipe in the CLI
+const orb = await generate("sphere", { preset: "risograph", canvasWidth: 800, canvasHeight: 600 });
+```
+
+Errors are `DithError` with the CLI envelope's `code`, `suggestion` and `validValues`. [packages/dith/llms.txt](../../packages/dith/llms.txt) has the whole API on one page. Animation, batch, compare, overlays and other file-path features are CLI-only.
+
 ## Interactive vs headless
 
 `--view`, `preview` (fullscreen by default), and `compare --view` are interactive Kitty-protocol viewers meant for a human at a terminal. In non-interactive agent shells, render to files, use `--preview` or `--format braille`, or pass `--inline` (for example `dith preview img.png --inline --mode braille --cols 60`). Only use the fullscreen viewer when the user explicitly wants to watch in their own terminal.

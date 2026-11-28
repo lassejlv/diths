@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>dith without a bundler</title>
+<script type="module">
+  // Plain ES modules straight from dist/, as a CDN serves them: no bundler, no import map.
+  import { dither, generate, init } from "../dist/index.js";
+
+  const hex = async (bytes) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    const { inputs, cases } = await (await fetch("./fixtures/fixtures.json")).json();
+    const info = await init();
+    const results = [];
+    for (const c of cases.filter((c) => c.input !== "jpeg" && c.input !== "alpha")) {
+      const out = c.generate ? await generate(c.generate, c.options) : await dither(`data:image/png;base64,${inputs[c.input]}`, c.options);
+      const bytes = c.format === "svg" ? new TextEncoder().encode(out.toSVG()) : c.format === "gif" ? out.toGIF() : out.toPNG();
+      results.push({ id: c.id, ok: (await hex(bytes)) === c.sha256 });
+    }
+    window.__dith = { info, results };
+  } catch (err) {
+    window.__dith = { error: String(err?.stack ?? err) };
+  }
+</script>
