@@ -8,7 +8,6 @@ use std::fs::{self, File};
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::time::Instant;
 
 use anyhow::{Context, Result};
 use image::codecs::gif::GifDecoder;
@@ -19,6 +18,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::clock;
 use crate::color::Rgb;
 use crate::diff::count_changed_pixels;
 use crate::dither::dither_image;
@@ -616,7 +616,7 @@ pub fn dither_animation_frames(
     recipe: &DitherRecipe,
     anim_opts: &AnimDitherOptions,
 ) -> Result<AnimatedOutput, RecipeError> {
-    let started = Instant::now();
+    let started = clock::start();
     recipe.validate()?;
     if raw_frames.is_empty() {
         return Err(RecipeError::Validation {
@@ -880,7 +880,7 @@ pub fn dither_animation_frames(
         output_dimensions,
         histogram,
         changed_pixels,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: clock::elapsed_ms(started),
     })
 }
 

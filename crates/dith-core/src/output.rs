@@ -1116,6 +1116,23 @@ pub fn encode_fast_png_bytes(img: &RgbaImage) -> Result<Vec<u8>> {
     encode_png(img, png::Compression::Fast)
 }
 
+/// Encode `img` as a lossless WebP, the same bytes [`encode_image`] writes for
+/// [`OutputFormat::Webp`].
+///
+/// # Errors
+/// Returns an error if the image is larger than 16384x16384 pixels or encoding fails.
+pub fn encode_webp_bytes(img: &RgbaImage) -> Result<Vec<u8>> {
+    crate::webp::encode_lossless(img)
+}
+
+/// Encode `img` as a single-frame GIF with an exact color table, the same bytes [`encode_image`]
+/// writes for [`OutputFormat::Gif`] when the image has at most 256 colors. Returns `None` when it
+/// has more colors or is larger than GIF allows.
+#[must_use]
+pub fn encode_gif_bytes(img: &RgbaImage) -> Option<Vec<u8>> {
+    crate::gif_lzw::encode_still(img)
+}
+
 fn encode_png(img: &RgbaImage, compression: png::Compression) -> Result<Vec<u8>> {
     let layout = PngLayout::for_images([img]);
     let mut out = Vec::new();
