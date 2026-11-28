@@ -60,6 +60,7 @@ pub mod resample;
 #[cfg(feature = "svg")]
 pub mod svg;
 
+mod clock;
 mod deflate;
 mod gif_lzw;
 mod huffman;

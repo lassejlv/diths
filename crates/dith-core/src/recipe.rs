@@ -2,13 +2,13 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::time::Instant;
 
 use anyhow::Result;
 use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::clock;
 use crate::color::Rgb;
 use crate::dither::{DitherOptions, dither_image};
 use crate::output::{ColorUsage, ExportOptions, color_histogram};
@@ -356,7 +356,7 @@ pub fn run_pipeline_owned(
 }
 
 fn pipeline(src: Cow<'_, RgbaImage>, recipe: &DitherRecipe) -> Result<PipelineOutput, RecipeError> {
-    let started = Instant::now();
+    let started = clock::start();
     recipe.validate()?;
     let source_width = src.width();
     let source_height = src.height();
@@ -386,7 +386,7 @@ fn pipeline(src: Cow<'_, RgbaImage>, recipe: &DitherRecipe) -> Result<PipelineOu
         working_width,
         working_height,
         histogram,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms: clock::elapsed_ms(started),
     })
 }
 
