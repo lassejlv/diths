@@ -149,3 +149,93 @@ jobs:
         run: |
           crates/dith-wasm/scripts/build.sh --features full --out "$RUNNER_TEMP/pkg-full"
           node crates/dith-wasm/scripts/parity.mjs "$RUNNER_TEMP/pkg-full/node" full
+
+  js:
+    name: JavaScript (packages/dith)
+    runs-on: ubuntu-latest
+    env:
+      BINARYEN_VERSION: "133"
+    defaults:
+      run:
+        working-directory: packages/dith
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.130
+
+      - name: Install wasm-opt
+        working-directory: .
+        run: |
+          curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Build the dith CLI (reference output and capabilities)
+        working-directory: .
+        run: cargo build --release --locked -p dith-cli
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build dith.wasm and dith-decode.wasm
+        run: bun run wasm
+
+      - name: Generated types and option tables are current
+        run: node scripts/gen.mjs --check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build with tsdown
+        run: bun run build
+
+      - name: CLI reference fixtures
+        run: bun run fixtures
+
+      - name: Test (Node)
+        run: bun run test
+
+      - name: Test (Bun)
+        run: bun run test:bun
+
+      - name: Test (Deno)
+        run: bun run test:deno
+
+      - name: Test (Cloudflare Workers, workerd)
+        run: bun run test:workers
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Test (headless Chromium, through Vite)
+        run: bun run test:browser
+
+      - name: Test (headless Chromium, no bundler)
+        run: bun run test:cdn
+
+      - name: Size report
+        run: bun run size | tee -a "$GITHUB_STEP_SUMMARY"
