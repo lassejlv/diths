@@ -183,6 +183,79 @@ pub fn generate_options(spec: &str) -> Result<GenerateOptions, Error> {
     Ok(opts)
 }
 
+/// Encoded formats [`decode`] reads: PNG, JPEG, GIF and WebP with the `decode` feature, none
+/// without it.
+pub const DECODERS: &[&str] = &[
+    #[cfg(feature = "decode")]
+    "png",
+    #[cfg(feature = "decode")]
+    "jpeg",
+    #[cfg(feature = "decode")]
+    "gif",
+    #[cfg(feature = "decode")]
+    "webp",
+];
+
+fn undecodable(reason: &str) -> Error {
+    Error {
+        code: "INVALID_ARGUMENT",
+        message: format!("invalid argument 'input': {reason}"),
+        suggestion: if DECODERS.is_empty() {
+            "Decode the image on the host (createImageBitmap, canvas) and pass RGBA pixels, or use the dith-wasm build with the `decode` feature.".to_string()
+        } else {
+            "Pass PNG, JPEG, GIF or WebP bytes, or decode the image yourself and pass RGBA pixels."
+                .to_string()
+        },
+        valid_values: Some(DECODERS.iter().map(ToString::to_string).collect()),
+    }
+}
+
+/// Decode PNG, JPEG, GIF (first frame) or WebP bytes to RGBA with the decoders the dith CLI
+/// reads files with, so the pixels match `dith apply` on the same file. Only these four codecs
+/// are linked, which keeps the module small.
+///
+/// # Errors
+/// Returns `INVALID_ARGUMENT` for another or an unrecognised format, or `RUNTIME_ERROR` for
+/// corrupt data.
+#[cfg(feature = "decode")]
+pub fn decode(bytes: &[u8]) -> Result<RgbaImage, Error> {
+    use dith_core::image::codecs::{
+        gif::GifDecoder, jpeg::JpegDecoder, png::PngDecoder, webp::WebPDecoder,
+    };
+    use dith_core::image::{DynamicImage, ImageFormat};
+    use std::io::Cursor;
+
+    let cursor = || Cursor::new(bytes);
+    let decoded = match dith_core::image::guess_format(bytes) {
+        Ok(ImageFormat::Png) => PngDecoder::new(cursor()).and_then(DynamicImage::from_decoder),
+        Ok(ImageFormat::Jpeg) => JpegDecoder::new(cursor()).and_then(DynamicImage::from_decoder),
+        Ok(ImageFormat::Gif) => GifDecoder::new(cursor()).and_then(DynamicImage::from_decoder),
+        Ok(ImageFormat::WebP) => WebPDecoder::new(cursor()).and_then(DynamicImage::from_decoder),
+        Ok(other) => {
+            return Err(undecodable(&format!(
+                "{other:?} images are not decoded here"
+            )));
+        }
+        Err(_) => {
+            return Err(undecodable(
+                "the bytes are not a PNG, JPEG, GIF or WebP image",
+            ));
+        }
+    };
+    Ok(decoded.map_err(|e| Error::runtime(&e))?.into_rgba8())
+}
+
+/// Without the `decode` feature every call fails, so hosts decode with their own codecs.
+///
+/// # Errors
+/// Always returns `INVALID_ARGUMENT`.
+#[cfg(not(feature = "decode"))]
+pub fn decode(_bytes: &[u8]) -> Result<RgbaImage, Error> {
+    Err(undecodable(
+        "this dith-wasm build has no image decoders (cargo feature `decode`)",
+    ))
+}
+
 /// Draw a procedural source image.
 #[must_use]
 pub fn generate(opts: &GenerateOptions) -> RgbaImage {
@@ -341,6 +414,32 @@ mod tests {
         assert_eq!(
             err.valid_values.as_deref().map(<[String]>::len),
             Some(FORMATS.len())
+        );
+    }
+
+    #[cfg(feature = "decode")]
+    #[test]
+    fn decode_matches_the_cli_reader() {
+        let img =
+            generate(&generate_options(r#"{"pattern":"plasma","width":40,"height":30}"#).unwrap());
+        let png = encode(&img, "png", &ExportOptions::default()).unwrap();
+        assert_eq!(decode(&png).unwrap(), img);
+        let jpeg = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/intro-poster.jpg"
+        ))
+        .unwrap();
+        assert_eq!(
+            decode(&jpeg).unwrap(),
+            dith_core::input::decode_image_bytes(&jpeg, None).unwrap()
+        );
+        assert_eq!(
+            decode(b"BM not really").unwrap_err().code,
+            "INVALID_ARGUMENT"
+        );
+        assert_eq!(
+            decode(b"nope").unwrap_err().valid_values.unwrap().len(),
+            DECODERS.len()
         );
     }
 

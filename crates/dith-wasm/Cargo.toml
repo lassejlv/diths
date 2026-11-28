@@ -20,9 +20,12 @@ webp = []
 gif = []
 # `export.optimize` for PNG: palette, filter and Zopfli search for the smallest file.
 png-optimize = []
+# PNG, JPEG, GIF and WebP input (`decode`) with the CLI's decoders, about 115 KB brotli. For
+# hosts without image codecs of their own: Node, Bun, Deno, Workers.
+decode = []
 # SVG input (`rasterizeSvg`) through resvg.
 svg = ["dith-core/svg"]
-full = ["webp", "gif", "png-optimize", "svg"]
+full = ["webp", "gif", "png-optimize", "svg", "decode"]
 
 [dependencies]
 dith-core = { path = "../dith-core", default-features = false }

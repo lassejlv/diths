@@ -10,10 +10,12 @@ cargo install wasm-bindgen-cli --version 0.2.130   # must match wasm-bindgen in 
 # and wasm-opt from binaryen on PATH
 
 crates/dith-wasm/scripts/build.sh                    # light default build into crates/dith-wasm/pkg
-crates/dith-wasm/scripts/build.sh --features full    # adds GIF, WebP, PNG optimize and SVG input
+crates/dith-wasm/scripts/build.sh --features full    # adds WebP, PNG optimize, image decoding and SVG input
 ```
 
 `pkg/` is an npm package with three entry points: `dith-wasm` (ES module for browsers, call `init()` first), `dith-wasm/bundler` (for bundlers that load `.wasm` imports) and `dith-wasm/node` (CommonJS, ready on import).
+
+For a typed, one-call API on top of this crate (input decoding, options as CLI flags, Workers support), use the [`dith` package](../../packages/dith/README.md).
 
 ## Dither a canvas
 
@@ -54,6 +56,8 @@ In Node, `require("dith-wasm/node")` and pass any RGBA buffer.
 | `presets()`, `palettes()`, `algorithms()`, `generators()` | The catalogs, as `dith list --json` shows them |
 | `formats()`, `version()` | What this build encodes, and the dith-core version |
 | `rasterizeSvg(svg, width?, height?)` | RGBA pixels of an SVG (`svg` feature) |
+| `decode(bytes)`, `decoders()` | RGBA pixels of PNG, JPEG, GIF or WebP bytes, with the CLI's decoders (`decode` feature; without it `decoders()` is empty and `decode` throws) |
+| `recipe(spec)` | The complete recipe a preset name, recipe JSON or recipe object resolves to, as `--emit-recipe` prints it |
 
 `rgba` is a `Uint8Array` or `Uint8ClampedArray` (an `ImageData`'s `data`), and results return a `Uint8ClampedArray`. Pixels are copied once into wasm memory and once out.
 
@@ -70,8 +74,9 @@ The default build has the whole engine (every algorithm, palette, preset and gen
 | default (`gif`) | `encode(..., "gif")` (3 KB brotli on its own) | 824 KB | 334 KB | 266 KB |
 | `+ webp` | `encode(..., "webp")` | +98 KB | +30 KB | +25 KB |
 | `+ png-optimize` | `encode(..., "png", { optimize: true })`: palette and filter search plus Zopfli | +175 KB | +64 KB | +49 KB |
+| `+ decode` | `decode()`: PNG, JPEG, GIF and WebP input | +428 KB | +155 KB | +115 KB |
 | `+ svg` | `rasterizeSvg()`, through resvg | +875 KB | +355 KB | +239 KB |
-| `full` | All of the above | 1,972 KB | 793 KB | 577 KB |
+| `full` | All of the above | 2,398 KB | 946 KB | 690 KB |
 
 ## Same pixels as native
 

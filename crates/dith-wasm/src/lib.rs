@@ -319,6 +319,35 @@ pub fn rasterize_svg(
     Ok(image_result(&img, meta))
 }
 
+/// Decode PNG, JPEG, GIF (first frame) or WebP bytes to RGBA pixels, with the same decoders the
+/// dith CLI reads files with.
+///
+/// # Errors
+/// Throws a `DithError` for another format or corrupt data.
+#[wasm_bindgen(unchecked_return_type = "RgbaImage")]
+pub fn decode(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let img = engine::decode(bytes).map_err(throw)?;
+    let meta = to_js(&serde_json::json!({ "width": img.width(), "height": img.height() }));
+    Ok(image_result(&img, meta))
+}
+
+/// Encoded formats `decode` reads.
+#[wasm_bindgen(unchecked_return_type = "string[]")]
+#[must_use]
+pub fn decoders() -> JsValue {
+    to_js(&engine::DECODERS)
+}
+
+/// Resolve a recipe argument (a preset name, recipe JSON text or a recipe object) to the complete
+/// recipe `dith apply --emit-recipe` would print, every field filled in.
+///
+/// # Errors
+/// Throws a `DithError` for an unknown preset or bad JSON.
+#[wasm_bindgen(unchecked_return_type = "Recipe")]
+pub fn recipe(spec: &RecipeArg) -> Result<JsValue, JsValue> {
+    Ok(to_js(&recipe_arg(spec)?))
+}
+
 /// The recipe of a built-in preset, to adjust and pass to `dither`. With `procedural`, photo
 /// preparation is dropped, as `dith generate --preset` does.
 ///
