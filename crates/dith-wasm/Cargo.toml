@@ -1,0 +1,35 @@
+[package]
+name = "dith-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly bindings for dith-core: dither RGBA pixels with dith recipes in browsers and Node."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# GIF costs about 3 KB brotli; WebP about 25 KB, png-optimize about 49 KB and svg about 240 KB,
+# so those stay opt-in (sizes in README.md).
+default = ["gif"]
+# Lossless WebP output (`encode(..., "webp")`).
+webp = []
+# Single-frame GIF output (`encode(..., "gif")`).
+gif = []
+# `export.optimize` for PNG: palette, filter and Zopfli search for the smallest file.
+png-optimize = []
+# SVG input (`rasterizeSvg`) through resvg.
+svg = ["dith-core/svg"]
+full = ["webp", "gif", "png-optimize", "svg"]
+
+[dependencies]
+dith-core = { path = "../dith-core", default-features = false }
+js-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true

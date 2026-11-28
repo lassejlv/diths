@@ -2,3 +2,4 @@
 .DS_Store
 /bench-corpus
 /examples/cat-icon/out/
+/crates/dith-wasm/pkg/
