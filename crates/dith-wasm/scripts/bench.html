@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>dith-wasm browser benchmark</title>
+<!--
+  The browser half of bench.mjs. Build the package (scripts/build.sh), serve the repository root
+  and open /crates/dith-wasm/scripts/bench.html?photo=/path/to/photo.jpg&runs=7.
+  Results land in the page and in window.benchResult.
+-->
+<pre id="out">running…</pre>
+<script type="module">
+  import init, { dither, generate } from "../pkg/web/dith_wasm.js";
+  import { benchCases } from "./cases.mjs";
+
+  await init();
+  const params = new URLSearchParams(location.search);
+  const runs = Number(params.get("runs") ?? 7);
+  const bitmap = await createImageBitmap(await (await fetch(params.get("photo") ?? "../../../assets/intro-poster.jpg")).blob());
+  const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+  const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+
+  const spec = (v) => (typeof v === "string" ? v : v && JSON.stringify(v));
+  const result = {};
+  for (const c of benchCases()) {
+    const run = () => (c.generate ? generate(c.generate, spec(c.recipe)) : dither(data, width, height, spec(c.recipe)));
+    run();
+    const times = [];
+    for (let i = 0; i < runs; i++) {
+      const t = performance.now();
+      run();
+      times.push(performance.now() - t);
+    }
+    times.sort((a, b) => a - b);
+    result[c.id] = times[times.length >> 1];
+  }
+  window.benchResult = { width, height, runs, result };
+  document.getElementById("out").textContent = JSON.stringify(window.benchResult, null, 2);
+</script>

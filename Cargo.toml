@@ -17,6 +17,7 @@ dith-core = { path = "crates/dith-core" }
 flate2 = "1"
 gif = "0.14"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+js-sys = "0.3.107"
 png = "0.18"
 rayon = "1"
 resvg = { version = "0.50", default-features = false }
@@ -24,6 +25,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
+wasm-bindgen = "0.2.130"
 zopfli = { version = "0.8", default-features = false, features = ["std", "zlib"] }
 
 [workspace.lints.rust]
@@ -54,3 +56,11 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# dith-wasm: `crates/dith-wasm/scripts/build.sh` builds with this profile. opt-level "s" and "z"
+# save 8% brotli but dither up to 3.5x slower, so speed wins.
+[profile.wasm-release]
+inherits = "release"
+opt-level = 3
+# Keep the target_features section for wasm-bindgen; wasm-opt strips names and producers.
+strip = false

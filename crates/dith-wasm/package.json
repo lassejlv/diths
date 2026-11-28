@@ -1,0 +1,29 @@
+{
+  "name": "dith-wasm",
+  "version": "0.0.0",
+  "description": "Deterministic dithering in WebAssembly: the dith engine for browsers and Node, driven by dith recipe JSON.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lassejlv/diths",
+    "directory": "crates/dith-wasm"
+  },
+  "keywords": ["dither", "dithering", "wasm", "image", "palette", "pixel-art"],
+  "files": ["web", "bundler", "node", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./web/dith_wasm.d.ts",
+      "default": "./web/dith_wasm.js"
+    },
+    "./bundler": {
+      "types": "./bundler/dith_wasm.d.ts",
+      "default": "./bundler/dith_wasm.js"
+    },
+    "./node": {
+      "types": "./node/dith_wasm.d.ts",
+      "default": "./node/dith_wasm.js"
+    }
+  },
+  "types": "./web/dith_wasm.d.ts",
+  "sideEffects": ["./bundler/dith_wasm.js", "./bundler/snippets/*"]
+}
