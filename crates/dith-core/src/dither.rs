@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::color::{ColorSpace, Rgb, srgb_u8_to_linear};
+use crate::detmath;
 use crate::ink::{SolidInk, apply_solid_ink};
 use crate::palette::{Palette, SplitMix64};
 
@@ -1034,7 +1035,7 @@ fn riemersma_dither(img: &RgbaImage, palette: &Palette, opts: &DitherOptions) ->
     let mut weight_sum = 0.0f32;
     for (i, slot) in weights.iter_mut().enumerate() {
         let exp = (i as f32) / ((QUEUE_LEN - 1) as f32);
-        let w_i = RATIO.powf(1.0 - exp);
+        let w_i = detmath::powf(RATIO, 1.0 - exp);
         *slot = w_i;
         weight_sum += w_i;
     }
@@ -1278,7 +1279,7 @@ fn generate_void_and_cluster(size: usize) -> Vec<f32> {
     for dy in -RADIUS..=RADIUS {
         for dx in -RADIUS..=RADIUS {
             let d2 = (dx * dx + dy * dy) as f32;
-            offsets.push((dx, dy, (-d2 / denom).exp()));
+            offsets.push((dx, dy, detmath::exp(-d2 / denom)));
         }
     }
 
@@ -1298,7 +1299,7 @@ fn generate_void_and_cluster(size: usize) -> Vec<f32> {
     let mut energy = vec![0.0f32; n];
     let mut placed = 0usize;
     while placed < init_ones {
-        let idx = (rng.next_u64() as usize) % n;
+        let idx = (rng.next_u64() % n as u64) as usize;
         if !pattern[idx] {
             pattern[idx] = true;
             add_energy(&mut energy, idx % size, idx / size, 1.0);

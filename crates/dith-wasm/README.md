@@ -82,7 +82,7 @@ The default build has the whole engine (every algorithm, palette, preset and gen
 
 `scripts/parity.mjs` renders 104 cases through the `.wasm` and through native dith-core: every preset, every algorithm on 2- and 16-color palettes, the preprocessing paths and every generator. It requires identical RGBA and identical encoded bytes. CI runs it on Linux.
 
-Eleven cases are known to differ by a few pixels, all of them in paths that call `powf`, `sinf`, `cosf` or `expf`: `gamma`, grayscale, adaptive palettes, `ostromoukhov`, and the `mesh`, `plasma`, `waves`, `radial-gradient` and `inflate` generators. Native builds call the platform's math library (glibc on Linux), while WebAssembly calls Rust's `libm`, and the two can disagree in the last bit, which can flip a dithered pixel. They are pinned by name with a pixel budget in `LIBM_DIFFS` in `scripts/cases.mjs`. Every built-in preset matches exactly.
+Every case matches exactly. dith-core never calls the platform's math library on its output path: `powf`, `exp`, `sin`, `cos`, `hypot` and `cbrt` come from `dith_core::detmath`, which uses only operations IEEE 754 defines exactly, so native builds on any platform and the `.wasm` compute the same bits. The one byte-level exception is WebP of a true-color image (never a dither result), where `image-webp` breaks Huffman ties by pointer width; both files decode to the same pixels.
 
 ## Speed
 

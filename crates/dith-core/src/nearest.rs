@@ -16,6 +16,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::color::{ColorSpace, LinearRgb};
+use crate::detmath;
 use crate::palette::Palette;
 
 /// Grid cells per axis.
@@ -89,7 +90,7 @@ impl Axis {
 
 /// Cells evenly sized in the cube root, for linear-light samples: the Oklab scan measures
 /// distances after a cube root, and palettes (and photographs) crowd the dark end of linear light.
-static CBRT_AXIS: LazyLock<Axis> = LazyLock::new(|| Axis::new(f64::cbrt));
+static CBRT_AXIS: LazyLock<Axis> = LazyLock::new(|| Axis::new(detmath::cbrt));
 /// Evenly sized cells for gamma-encoded sRGB samples.
 static UNIFORM_AXIS: LazyLock<Axis> = LazyLock::new(|| Axis::new(|v| v));
 
@@ -412,7 +413,11 @@ impl OklabCell {
                     + f64::from(row[2]) * corner[2]
             };
             let (u_lo, u_hi, u_center) = (response(lo), response(hi), response(center));
-            let (q_lo, q_hi, q_center) = (u_lo.cbrt(), u_hi.cbrt(), u_center.cbrt());
+            let (q_lo, q_hi, q_center) = (
+                detmath::cbrt(u_lo),
+                detmath::cbrt(u_hi),
+                detmath::cbrt(u_center),
+            );
             let tangent_slope = 1.0 / (3.0 * q_center * q_center);
             let chord_slope = (q_hi - q_lo) / (u_hi - u_lo);
             cell.tangent[axis] = (q_center - tangent_slope * u_center, tangent_slope);
@@ -422,7 +427,7 @@ impl OklabCell {
             cell.q_center[axis] = q_center;
             // Responses this small (with room for their own f32 rounding) come back as zero.
             if u_lo <= 2.0 * CBRT_ZERO_BELOW {
-                cell.snap[axis] = (2.0 * CBRT_ZERO_BELOW).cbrt();
+                cell.snap[axis] = detmath::cbrt(2.0 * CBRT_ZERO_BELOW);
             }
         }
         cell

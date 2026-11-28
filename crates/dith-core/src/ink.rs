@@ -10,6 +10,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::color::Rgb;
+use crate::detmath;
 use crate::palette::Palette;
 
 /// Long side, in pixels, at which outline detection blurs with a 3 px Gaussian.
@@ -215,7 +216,7 @@ fn outline_mask(luma: &[u8], w: usize, h: usize, sensitivity: f32) -> Vec<bool> 
 fn gaussian_kernel(sigma: f64) -> Vec<u64> {
     let radius = (3.0 * sigma).ceil() as i64;
     let raw: Vec<f64> = (-radius..=radius)
-        .map(|i| (-((i * i) as f64) / (2.0 * sigma * sigma)).exp())
+        .map(|i| detmath::exp_f64(-((i * i) as f64) / (2.0 * sigma * sigma)))
         .collect();
     let total: f64 = raw.iter().sum();
     let mut weights: Vec<u64> = raw

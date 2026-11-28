@@ -12,6 +12,7 @@ use image::RgbaImage;
 use image::imageops::{self, FilterType};
 use serde::{Deserialize, Serialize};
 
+use crate::detmath;
 use crate::recipe::RecipeError;
 
 /// Which channel of a shape image marks its filled area.
@@ -143,7 +144,7 @@ impl InflateShape {
         let r = width.min(height) as f32 * 0.36;
         let (cx, cy) = ((width as f32 - 1.0) * 0.5, (height as f32 - 1.0) * 0.5);
         let field = (0..height)
-            .flat_map(|y| (0..width).map(move |x| (x as f32 - cx).hypot(y as f32 - cy) - r))
+            .flat_map(|y| (0..width).map(move |x| detmath::hypot(x as f32 - cx, y as f32 - cy) - r))
             .collect();
         Self {
             width,
@@ -401,9 +402,9 @@ pub fn inflate_tones(
     let tilt = if phase == 0.0 {
         0.65
     } else {
-        (0.65 + 0.14 * amp * (phase * std::f32::consts::TAU).sin()).clamp(0.15, 0.92)
+        (0.65 + 0.14 * amp * detmath::sin(phase * std::f32::consts::TAU)).clamp(0.15, 0.92)
     };
-    let (lx, ly) = (rad.cos() * tilt, -rad.sin() * tilt);
+    let (lx, ly) = (detmath::cos(rad) * tilt, -detmath::sin(rad) * tilt);
     let lz = (1.0 - lx * lx - ly * ly).max(0.1).sqrt();
     let hz = lz + 1.0;
     let inv_hlen = 1.0 / (lx * lx + ly * ly + hz * hz).sqrt();
@@ -426,7 +427,7 @@ pub fn inflate_tones(
             let mut background = 1.0f32;
             if params.ground_shadow > 0.0 {
                 let (u, v) = ((x as f32 - scx) / srx, (y as f32 - scy) / sry);
-                background -= params.ground_shadow * (-(u * u + v * v) * 1.6).exp();
+                background -= params.ground_shadow * detmath::exp(-(u * u + v * v) * 1.6);
             }
             let coverage = (0.5 - field[i]).clamp(0.0, 1.0);
             if coverage <= 0.0 {
@@ -438,10 +439,8 @@ pub fn inflate_tones(
             let inv = 1.0 / (slope_x * slope_x + slope_y * slope_y + 1.0).sqrt();
             let (nx, ny, nz) = (-slope_x * inv, -slope_y * inv, inv);
             let diffuse = (nx * lx + ny * ly + nz * lz).max(0.0);
-            let spec = ((nx * lx + ny * ly + nz * hz) * inv_hlen)
-                .max(0.0)
-                .powf(28.0);
-            let rim = (1.0 - nz).max(0.0).powf(2.6);
+            let spec = detmath::powi(((nx * lx + ny * ly + nz * hz) * inv_hlen).max(0.0), 28);
+            let rim = detmath::powf((1.0 - nz).max(0.0), 2.6);
             let lit = crate::generate::highlight_shoulder(
                 params.ambient + diffuse * 0.78 + spec * params.specular + rim * params.rim,
             );

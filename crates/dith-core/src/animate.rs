@@ -20,6 +20,7 @@ use thiserror::Error;
 
 use crate::clock;
 use crate::color::Rgb;
+use crate::detmath;
 use crate::diff::count_changed_pixels;
 use crate::dither::dither_image;
 use crate::generate::{GenerateOptions, generate_pattern};
@@ -189,7 +190,7 @@ impl Easing {
         let t = t.clamp(0.0, 1.0);
         match self {
             Self::Linear => t,
-            Self::EaseInOut => 0.5 - 0.5 * (t * PI).cos(),
+            Self::EaseInOut => 0.5 - 0.5 * detmath::cos(t * PI),
             Self::EaseIn => t * t,
             Self::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
             Self::Smoothstep => t * t * (3.0 - 2.0 * t),
@@ -246,7 +247,7 @@ impl SweepMode {
         match self {
             Self::Linear => t,
             Self::Pulse => {
-                let s = (t * PI).sin();
+                let s = detmath::sin(t * PI);
                 s * s
             }
         }
