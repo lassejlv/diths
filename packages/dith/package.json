@@ -1,0 +1,69 @@
+{
+  "name": "dith",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Deterministic dithering for browsers, Node, Bun, Deno and Workers: the dith engine in WebAssembly behind one typed call.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lassejlv/diths",
+    "directory": "packages/dith"
+  },
+  "keywords": [
+    "dither",
+    "dithering",
+    "wasm",
+    "image",
+    "palette",
+    "pixel-art",
+    "1-bit"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/workerd.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "workerd": "./dist/workerd.js",
+      "default": "./dist/index.js"
+    },
+    "./dith.wasm": "./dist/dith.wasm",
+    "./dith-decode.wasm": "./dist/dith-decode.wasm",
+    "./package.json": "./package.json"
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "llms.txt"
+  ],
+  "engines": {
+    "node": ">=20.16"
+  },
+  "scripts": {
+    "wasm": "scripts/wasm.sh",
+    "gen": "node scripts/gen.mjs",
+    "build": "tsdown",
+    "fixtures": "node scripts/fixtures.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:bun": "bun test",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:deno": "deno run --allow-read --allow-env test/deno.ts",
+    "test:workers": "node test/workers.mjs",
+    "test:cdn": "node test/cdn.mjs",
+    "size": "node scripts/size.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@vitest/browser": "^5.1.2",
+    "@vitest/browser-playwright": "^5.1.2",
+    "miniflare": "^4.20260730.0",
+    "playwright": "^1.65.1",
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}

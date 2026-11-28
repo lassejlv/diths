@@ -1,0 +1,119 @@
+# dith (JavaScript library)
+
+> Deterministic dithering in WebAssembly for browsers, Node >= 20.16, Bun, Deno and Cloudflare Workers. One call, `dither(input, options)`, gives the same pixels and the same PNG bytes as the `dith` CLI with the same flags. ESM only, zero dependencies, fully typed.
+
+## Use
+
+```js
+import { dither, generate, recipe, presets, palettes, algorithms, generators, init, DithError } from "dith";
+
+const out = await dither(input, { preset: "manga" });       // or dither(input, "manga")
+out.width; out.height; out.data;                            // RGBA Uint8ClampedArray
+out.palette; out.histogram; out.source; out.working;        // hex colors, color usage, sizes
+out.recipe;                                                 // complete recipe: replay with { recipe } or dith apply --recipe
+out.toPNG(); out.toGIF();                                   // Uint8Array, byte-identical to the CLI
+out.toSVG({ svgShape: "circle" });                          // string
+out.toImageData(); out.toBlob("png"); out.toDataURL("png"); // png | gif | svg
+out.encode("png");                                          // any format init() lists
+
+const orb = await generate("sphere", { preset: "risograph", canvasWidth: 800, canvasHeight: 600 });
+const full = await recipe({ preset: "gameboy", pixelSize: 3 });  // like --emit-recipe, renders nothing
+const info = await init();  // optional: { version, formats, decoders }; init({ wasm: url | bytes }) or init({ decoders: true })
+```
+
+All functions are async. Results are synchronous objects.
+
+## Inputs
+
+- Pixels: `ImageData`, `{ data, width, height }` (RGBA, 4 bytes per pixel), or a previous result.
+- Encoded PNG, JPEG, GIF or WebP: `Uint8Array`, `ArrayBuffer`, any `ArrayBufferView`, `Blob`, `File`, `Response`.
+- A string or `URL`: http(s), data: and blob: URLs are fetched. On Node, Bun and Deno a plain string is a file path (relative to the working directory) and `file:` URLs are read.
+- Browsers only: `HTMLImageElement`, `HTMLCanvasElement`, `HTMLVideoElement`, `ImageBitmap`, `OffscreenCanvas`, `VideoFrame`.
+
+## Options
+
+`options` is a preset name or an object of the CLI flags in camelCase (`--pixel-size` is `pixelSize`, `--no-serpentine` is `serpentine: false`). Layering is the CLI's: `recipe` (object or JSON text), then `preset` (replaces the recipe), then every other option. Palette precedence: `colors` > `autoPalette` > `palette`. Colors are hex strings (`"#111"`, `"#f5efe6"`), as a comma-separated string or an array. An unknown option name is an error that lists the valid names.
+
+<!-- options:start -->
+| Option | Type | CLI flag | Recipe field | Range | Default |
+| --- | --- | --- | --- | --- | --- |
+| `preset` | `Preset` | `--preset` |  |  |  |
+| `recipe` | `Recipe \| string` | `--recipe` |  |  |  |
+| `algorithm` | `Algorithm` | `--algorithm` | `dither.algorithm` |  | `"floyd-steinberg"` |
+| `palette` | `Palette` | `--palette` | `palette` |  | `"bw"` |
+| `colors` | `string \| string[]` | `--colors` | `palette` |  |  |
+| `autoPalette` | `number` | `--auto-palette` | `palette` | `2..=64` |  |
+| `colorSpace` | `ColorSpace` | `--color-space` | `dither.color_space` |  | `"oklab"` |
+| `strength` | `number` | `--strength` | `dither.strength` | `0.0..=1.5` | `1` |
+| `serpentine` | `boolean` | `--serpentine` | `dither.serpentine` |  | `true` |
+| `bias` | `number` | `--bias` | `dither.bias` | `-0.5..=0.5` | `0` |
+| `noise` | `number` | `--noise` | `dither.noise` | `0.0..=0.5` | `0` |
+| `patternScale` | `number` | `--pattern-scale` | `dither.pattern_scale` | `1..=32` | `1` |
+| `patternOffset` | `[number, number]` |  | `dither.pattern_offset` |  | `[0,0]` |
+| `seed` | `number` | `--seed` | `dither.seed` |  | `42` |
+| `inkBelow` | `number` | `--ink-below` | `dither.ink_below` | `0.0..=1.0` |  |
+| `paperAbove` | `number` | `--paper-above` | `dither.paper_above` | `0.0..=1.0` |  |
+| `inkLines` | `number` | `--ink-lines` | `dither.ink_lines` | `0.0..=1.0` |  |
+| `width` | `number` | `--width` | `preprocess.width` |  |  |
+| `height` | `number` | `--height` | `preprocess.height` |  |  |
+| `maxDim` | `number` | `--max-dim` | `preprocess.max_dim` |  |  |
+| `scale` | `number` | `--scale` | `preprocess.scale` |  |  |
+| `fit` | `Fit` | `--fit` | `preprocess.fit` |  | `"contain"` |
+| `pixelSize` | `number` | `--pixel-size` | `preprocess.pixel_size` | `1..=64` | `1` |
+| `brightness` | `number` | `--brightness` | `preprocess.brightness` | `-1.0..=1.0` | `0` |
+| `contrast` | `number` | `--contrast` | `preprocess.contrast` | `-1.0..=1.0` | `0` |
+| `gamma` | `number` | `--gamma` | `preprocess.gamma` | `0.1..=5.0` | `1` |
+| `saturation` | `number` | `--saturation` | `preprocess.saturation` | `0.0..=3.0` | `1` |
+| `sharpen` | `number` | `--sharpen` | `preprocess.sharpen` | `0.0..=5.0` | `0` |
+| `blur` | `number` | `--blur` | `preprocess.blur` | `0.0..=20.0` | `0` |
+| `autoLevels` | `boolean` | `--auto-levels` | `preprocess.auto_levels` |  | `false` |
+| `grayscale` | `boolean` | `--grayscale` | `preprocess.grayscale` |  | `false` |
+| `invert` | `boolean` | `--invert` | `preprocess.invert` |  | `false` |
+| `alphaMode` | `AlphaMode` | `--alpha-mode` | `preprocess.alpha_mode` |  | `"preserve"` |
+| `background` | `string` | `--background` | `preprocess.background` |  | `"#ffffff"` |
+| `svgShape` | `SvgShape` | `--svg-shape` | `export.svg_shape` |  | `"rect"` |
+| `svgSkipBg` | `boolean` | `--svg-skip-bg` | `export.svg_skip_bg` |  | `false` |
+| `optimize` | `boolean` | `--optimize` | `export.optimize` |  | `false` |
+
+`generate(kind, options)` also takes:
+
+| Option | Type | CLI flag | Recipe field | Range | Default |
+| --- | --- | --- | --- | --- | --- |
+| `canvasWidth` | `number` | `--canvas-width` | `width` (generator) |  | `640` |
+| `canvasHeight` | `number` | `--canvas-height` | `height` (generator) |  | `480` |
+| `angle` | `number` | `--angle` | `angle` (generator) |  | `135` |
+| `frequency` | `number` | `--frequency` | `frequency` (generator) |  | `1` |
+| `stops` | `string \| string[]` | `--stops` | `stops` (generator) |  | `"#0a0a0d,#f7f7f9"` |
+| `phase` | `number` |  | `phase` (generator) |  | `0` |
+| `motionAmplitude` | `number` | `--motion-amplitude` | `motion_amplitude` (generator) |  | `1` |
+| `depth` | `number` | `--depth` | `inflate.depth` (generator) | `0.05..=4.0` | `1.0` |
+| `specular` | `number` | `--specular` | `inflate.specular` (generator) | `0.0..=2.0` | `0.42` |
+| `rim` | `number` | `--rim` | `inflate.rim` (generator) | `0.0..=2.0` | `0.28` |
+| `ambient` | `number` | `--ambient` | `inflate.ambient` (generator) | `0.0..=1.0` | `0.08` |
+| `blend` | `number` | `--blend` | `inflate.blend` (generator) | `0..=512` | `0` |
+| `groundShadow` | `number` | `--ground-shadow` | `inflate.ground_shadow` (generator) | `0.0..=1.0` | `0` |
+<!-- options:end -->
+
+## Catalogs
+
+Ask the library instead of guessing: `presets()` (id, name, description, tags, algorithm, recipe), `palettes()` (id, colors, ...), `algorithms()` (id, category, best_for, temporally_stable, ...), `generators()` (id, best_for, motion). The TypeScript types `Preset`, `Palette`, `Algorithm` and `Generator` are the same lists as string unions.
+
+## Errors
+
+Every failure throws `DithError` (`instanceof DithError`): `code`, `message`, `suggestion`, `validValues?`. `err.toJSON()` returns the CLI's envelope `{ status: "error", code, message, suggestion, valid_values? }`. Codes: `INVALID_ARGUMENT` (out-of-range value with the range in the message, unknown option, unknown choice, unreadable input, init options after loading), `UNKNOWN_PRESET`, `UNKNOWN_PALETTE`, `INVALID_HEX_COLOR`, `PALETTE_TOO_FEW_COLORS`, `INVALID_RECIPE_JSON`, `RUNTIME_ERROR` (corrupt image data). Fix the option named in the message and retry; `validValues` lists the accepted values when the set is finite.
+
+## Runtimes and loading
+
+- Browsers load `dith.wasm` (266 KB brotli) and decode encoded images with the browser. Browser JPEG decoding and canvas alpha differ slightly from the CLI's; `await init({ decoders: true })` before the first call loads `dith-decode.wasm` (381 KB brotli) for CLI-identical decoding. Opaque PNG, GIF and WebP are identical either way.
+- Node, Bun, Deno and Workers load `dith-decode.wasm`, which decodes PNG, JPEG, GIF and WebP. Other formats fail with `INVALID_ARGUMENT`: decode them yourself and pass pixels.
+- Cloudflare Workers: the package's `workerd` export condition imports the .wasm as a module; nothing to configure.
+- Bundlers: Vite (and webpack 5, untested) find the .wasm through `new URL(..., import.meta.url)`. Otherwise serve `dith/dith.wasm` yourself and call `init({ wasm: "/path/dith.wasm" })`.
+- Deno needs `--allow-read` to load the .wasm and local files.
+
+## Rules of thumb
+
+- Render at the final size (`maxDim`, or `width` + `height` + `fit`); never scale a dithered image afterwards.
+- Start from a preset, then override: `{ preset: "risograph", contrast: 0.2 }`. For print looks add `inkBelow: 0.2`, `paperAbove: 0.9`, `inkLines: 0.5`.
+- Same input and options give the same bytes, everywhere. Keep `seed` fixed for reproducibility; change it for variations.
+- Save `result.recipe` as JSON to reuse a look here or in the CLI (`dith apply in.png --recipe look.json -o out.png`).
+- PNG is the right output almost always. Keep SVG output small (`maxDim` 120 to 320).
