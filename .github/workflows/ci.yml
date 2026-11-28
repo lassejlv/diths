@@ -91,3 +91,61 @@ jobs:
           rm -f glibc-syms.txt
           if [ "$bad" -ne 0 ]; then exit 1; fi
           echo "OK: $bin needs nothing newer than GLIBC_$GLIBC_MAX"
+
+  wasm:
+    name: WebAssembly (dith-wasm)
+    runs-on: ubuntu-latest
+    env:
+      BINARYEN_VERSION: "133"
+      # Raw .wasm size budget for the default build, about 10% above the measured 826 KB.
+      WASM_SIZE_BUDGET: "910000"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.130
+
+      - name: Install wasm-opt
+        run: |
+          curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Clippy (wasm32)
+        run: cargo clippy --locked -p dith-wasm --target wasm32-unknown-unknown --all-targets --all-features -- -D warnings
+
+      - name: Build default package
+        run: crates/dith-wasm/scripts/build.sh
+
+      - name: Check size budget
+        run: |
+          size=$(wc -c < crates/dith-wasm/pkg/web/dith_wasm_bg.wasm)
+          echo "default dith_wasm_bg.wasm: $size bytes (budget $WASM_SIZE_BUDGET)"
+          if [ "$size" -gt "$WASM_SIZE_BUDGET" ]; then
+            echo "::error::dith_wasm_bg.wasm is $size bytes, over the $WASM_SIZE_BUDGET budget"
+            exit 1
+          fi
+
+      - name: Parity with native (default)
+        run: node crates/dith-wasm/scripts/parity.mjs crates/dith-wasm/pkg/node
+
+      - name: Build and check parity (full)
+        run: |
+          crates/dith-wasm/scripts/build.sh --features full --out "$RUNNER_TEMP/pkg-full"
+          node crates/dith-wasm/scripts/parity.mjs "$RUNNER_TEMP/pkg-full/node" full
